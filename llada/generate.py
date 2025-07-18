@@ -128,7 +128,8 @@ def generate_with_prefix_cache(model, prompt, steps=128, gen_length=128, block_l
     steps = steps // num_blocks
 
     nfe = 0
-            
+
+    time_step = 0
     for num_block in range(num_blocks):
         current_block_start = prompt.shape[1] + num_block * block_length
         current_block_end = current_block_start + block_length
@@ -315,7 +316,7 @@ def get_transfer_index_dynamic(logits, temperature, remasking, mask_index, x, nu
     return x0, transfer_index
 
 def main():
-    device = 'cuda'
+    device = 'cuda:2'
 
     model = LLaDAModelLM.from_pretrained('GSAI-ML/LLaDA-8B-Instruct', trust_remote_code=True, torch_dtype=torch.bfloat16).to(device).eval()
     tokenizer = AutoTokenizer.from_pretrained('GSAI-ML/LLaDA-8B-Instruct', trust_remote_code=True)
@@ -328,8 +329,11 @@ def main():
 
     input_ids = tokenizer(prompt)['input_ids']
     input_ids = torch.tensor(input_ids).to(device).unsqueeze(0)
-
-    out = generate_with_dual_cache(model, input_ids, steps=128, gen_length=128, block_length=32, temperature=0., remasking='low_confidence')
+    import time
+    start_time = time.time()
+    out = generate_with_prefix_cache(model, input_ids, steps=256, gen_length=256, block_length=32)
+    # out = generate(model, input_ids, steps=8, gen_length=256, block_length=32, threshold=0.9)
+    print(f'Time taken: {time.time() - start_time} seconds')
     print(tokenizer.batch_decode(out[0][:, input_ids.shape[1]:], skip_special_tokens=True)[0])
 
 if __name__ == '__main__':

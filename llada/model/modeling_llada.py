@@ -793,6 +793,24 @@ class LLaDABlock(nn.Module):
         else:
             raise NotImplementedError(f"Unknown block type: '{config.block_type}'")
 
+    def use_cache(self, time_step: int) -> bool:
+        # return False
+        layer_bound = self.config.n_layers // 3
+        # Strategy 1: same strategy as delta DiT
+        if time_step <= 128:
+            # if the time step is in the outline stage, skip later layers because they focus on details 
+            return (self.layer_id > self.config.n_layers - layer_bound) and (time_step % 2) != 0
+        else:
+            # if the time step is in the detail stage, skip early layers because they focus on outlines
+            return (self.layer_id < layer_bound) and (time_step % 2) != 0
+        
+        # # Strategy 2: cache earlier layers
+        # if self.layer_id == 0:
+        #     return (time_step % 5) != 0
+        # if self.layer_id == 1:
+        #     return (time_step % 3) != 0
+        # else:
+        #     return False
 
 class LLaDASequentialBlock(LLaDABlock):
     """
@@ -838,7 +856,13 @@ class LLaDASequentialBlock(LLaDABlock):
         attention_bias: Optional[torch.Tensor] = None,
         layer_past: Optional[Tuple[torch.Tensor, torch.Tensor]] = None,
         use_cache: bool = False,
+        time_step: Optional[int] = None,
     ) -> Tuple[torch.Tensor, Optional[Tuple[torch.Tensor, torch.Tensor]]]:
+        if time_step != None and self.use_cache(time_step):
+            delta_cache = self.__cache[f"delta{self.layer_id}"]
+            if delta_cache.shape != x.shape:
+                delta_cache = delta_cache[:,32:,:]
+            return x + delta_cache, self.__cache[f"cache{self.layer_id}"]
         # Get query, key, value projections.
         # shape:
         #  - for regular attn q, k, v: (batch_size, seq_len, d_model)
@@ -878,6 +902,10 @@ class LLaDASequentialBlock(LLaDABlock):
         else:
             x = self.act(x)
         x = self.ff_out(x)
+        # adding mlp output and attention output to cache
+        if time_step != None:
+            self.__cache[f"delta{self.layer_id}"] = x + att
+            self.__cache[f"cache{self.layer_id}"] = cache
         x = self.dropout(x)
         x = og_x + x
 
@@ -941,7 +969,13 @@ class LLaDALlamaBlock(LLaDABlock):
         layer_past: Optional[Tuple[torch.Tensor, torch.Tensor]] = None,
         use_cache: bool = False,
         replace_position: Optional[torch.Tensor] = None,
+        time_step: Optional[int] = None,
     ) -> Tuple[torch.Tensor, Optional[Tuple[torch.Tensor, torch.Tensor]]]:
+        if time_step != None and self.use_cache(time_step):
+            delta_cache = self.__cache[f"delta{self.layer_id}"]
+            if delta_cache.shape != x.shape:
+                delta_cache = delta_cache[:,32:,:]
+            return x + delta_cache, self.__cache[f"cache{self.layer_id}"]
         # Get query, key, value projections.
         # shape:
         #  - for regular attn q, k, v: (batch_size, seq_len, d_model)
@@ -982,6 +1016,10 @@ class LLaDALlamaBlock(LLaDABlock):
             x = self.act(x)
         x = x * x_up # new add
         x = self.ff_out(x)
+        # adding mlp output and attention output to cache
+        if time_step != None:
+            self.__cache[f"delta{self.layer_id}"] = x + att
+            self.__cache[f"cache{self.layer_id}"] = cache
         x = self.dropout(x)
         x = og_x + x
 
@@ -1331,6 +1369,7 @@ class LLaDAModel(nn.Module):
         last_logits_only: bool = False,
         output_hidden_states: Optional[bool] = None,
         replace_position: Optional[torch.Tensor] = None,
+        time_step: Optional[int] = None,
     ) -> LLaDAOutput:
         """
         :param input_ids: A tensor of shape `(batch_size, seq_len)`.
@@ -1471,11 +1510,11 @@ class LLaDAModel(nn.Module):
                 ):
                     # shape: (batch_size, seq_len, d_model)
                     x, cache = self._activation_checkpoint_fn(
-                        block, x, attention_bias=attention_bias, layer_past=layer_past, use_cache=use_cache,replace_position=replace_position
+                        block, x, attention_bias=attention_bias, layer_past=layer_past, use_cache=use_cache,replace_position=replace_position, time_step=time_step
                     )
                 else:
                     # shape: (batch_size, seq_len, d_model)
-                    x, cache = block(x, attention_bias=attention_bias, layer_past=layer_past, use_cache=use_cache,replace_position=replace_position)
+                    x, cache = block(x, attention_bias=attention_bias, layer_past=layer_past, use_cache=use_cache,replace_position=replace_position, time_step=time_step)
                 if attn_key_values is not None:
                     assert cache is not None
                     attn_key_values.append(cache)
@@ -1568,6 +1607,7 @@ class LLaDAModelLM(PreTrainedModel):
         output_hidden_states: Optional[bool] = None,
         return_dict: Optional[bool] = None,
         replace_position: Optional[torch.Tensor] = None,  # This is a hack mitigation of an issue in transformers `4.39.x`
+        time_step: Optional[int] = None,
     ) -> Union[Tuple, CausalLMOutputWithPast]:
         if use_cache is None:
             use_cache = self.config.use_cache
@@ -1587,6 +1627,7 @@ class LLaDAModelLM(PreTrainedModel):
             use_cache=use_cache,
             output_hidden_states=output_hidden_states,
             replace_position=replace_position,
+            time_step=time_step,
         )
         # import pdb; pdb.set_trace()
         logits = outputs.logits
