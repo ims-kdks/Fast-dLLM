@@ -166,9 +166,6 @@ def generate_with_prefix_cache(model, prompt, steps=128, gen_length=128, block_l
 
             logits = model(x[:, current_block_start:], past_key_values=past_key_values, use_cache=True).logits
 
-            logits_with_noise = add_gumbel_noise(logits, temperature=temperature)
-            x0 = torch.argmax(logits_with_noise, dim=-1) # b, l
-
             if factor is None:
                 x0, transfer_index = get_transfer_index(logits, temperature, remasking, mask_index, 
                                                 x[:, current_block_start:], num_transfer_tokens[:, i] if threshold is None else None, threshold)
