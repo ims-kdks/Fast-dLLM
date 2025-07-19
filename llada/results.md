@@ -49,8 +49,22 @@ Total NFE is 168960
 2025-07-18:04:38:02,482 INFO     [lm_eval.loggers.evaluation_tracker:272] Output path not provided, skipping saving results aggregated
 llada_dist (model_path=GSAI-ML/LLaDA-8B-Instruct,gen_length=256,steps=256,block_length=32,use_cache=True,show_speed=True), gen_kwargs: (None), limit: None, num_fewshot: 5, batch_size: 1
 
+| Tasks | Version | Filter           | n-shot | Metric      |    |  Value |    | Stderr |
+| ----- | ------: | ---------------- | -----: | ----------- | -- | -----: | -- | -----: |
+| gsm8k |       3 | flexible-extract |      5 | exact_match | ↑ | 0.7453 | ± | 0.0120 |
+|       |         | strict-match     |      5 | exact_match | ↑ | 0.3897 | ± | 0.0134 |
+
+# Prefix cache (2GPU)
+
+Total number of tokens generated: 153706
+Total time taken: 12639.665463209152 seconds
+Tokens per second: 12.16060733795166
+Total NFE is 168960
+2025-07-19:06:29:23,797 INFO     [lm_eval.loggers.evaluation_tracker:272] Output path not provided, skipping saving results aggregated
+llada_dist (model_path=GSAI-ML/LLaDA-8B-Instruct,gen_length=256,steps=256,block_length=32,use_cache=True,show_speed=True), gen_kwargs: (None), limit: None, num_fewshot: 5, batch_size: 1
+
 |Tasks|Version|     Filter     |n-shot|  Metric   |   |Value |   |Stderr|
 |-----|------:|----------------|-----:|-----------|---|-----:|---|-----:|
-|gsm8k|      3|flexible-extract|     5|exact_match|↑  |0.7453|±  |0.0120|
-|     |       |strict-match    |     5|exact_match|↑  |0.3897|±  |0.0134|
+|gsm8k|      3|flexible-extract|     5|exact_match|↑  |0.7680|±  |0.0116|
+|     |       |strict-match    |     5|exact_match|↑  |0.3609|±  |0.0132|
 
