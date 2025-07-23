@@ -165,8 +165,8 @@ def generate_with_prefix_cache(model, prompt, steps=128, gen_length=128, block_l
             mask_index = (x[:, current_block_start:] == mask_id)
             mask_index[:, block_length:] = 0
 
-            logits = model(x[:, current_block_start:], past_key_values=past_key_values, use_cache=True).logits
-
+            logits = model(x[:, current_block_start:], past_key_values=past_key_values, use_cache=True, time_step=time_step).logits
+            time_step += 1
             if factor is None:
                 x0, transfer_index = get_transfer_index(logits, temperature, remasking, mask_index, 
                                                 x[:, current_block_start:], num_transfer_tokens[:, i] if threshold is None else None, threshold)

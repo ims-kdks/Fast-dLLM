@@ -799,10 +799,10 @@ class LLaDABlock(nn.Module):
         # Strategy 1: same strategy as delta DiT
         if time_step <= 128:
             # if the time step is in the outline stage, skip later layers because they focus on details 
-            return (self.layer_id > self.config.n_layers - layer_bound) and (time_step % 2) != 0
+            return (self.layer_id > self.config.n_layers - layer_bound) and (time_step % 4) != 0
         else:
             # if the time step is in the detail stage, skip early layers because they focus on outlines
-            return (self.layer_id < layer_bound) and (time_step % 2) != 0
+            return (self.layer_id < layer_bound) and (time_step % 4) != 0
         
         # # Strategy 2: cache earlier layers
         # if self.layer_id == 0:
@@ -962,6 +962,71 @@ class LLaDALlamaBlock(LLaDABlock):
         init_weights(self.config, self.ff_proj, d=self.config.d_model, layer_id=None)
         init_weights(self.config, self.up_proj, d=self.config.d_model, layer_id=None)  # new add
 
+    # def forward(
+    #     self,
+    #     x: torch.Tensor,
+    #     attention_bias: Optional[torch.Tensor] = None,
+    #     layer_past: Optional[Tuple[torch.Tensor, torch.Tensor]] = None,
+    #     use_cache: bool = False,
+    #     replace_position: Optional[torch.Tensor] = None,
+    #     time_step: Optional[int] = None,
+    # ) -> Tuple[torch.Tensor, Optional[Tuple[torch.Tensor, torch.Tensor]]]:
+    #     if time_step != None and self.use_cache(time_step):
+    #         att = self.__cache[f"delta{self.layer_id}"]
+    #         if att.shape != x.shape:
+    #             att = att[:,32:,:]
+    #         att += x
+    #         cache = self.__cache[f"cache{self.layer_id}"]
+    #     else:
+    #         # Get query, key, value projections.
+    #         # shape:
+    #         #  - for regular attn q, k, v: (batch_size, seq_len, d_model)
+    #         #  - for multi-query attn q: (batch_size, seq_len, d_model)
+    #         #                      k, v: (batch_size, seq_len, d_model // n_heads)
+    #         #  - for group query attn q: (batch_size, seq_len, d_model)
+    #         #                      k, v: (batch_size, seq_len, d_model // n_kv_heads)
+    #         x_normed = self.attn_norm(x) #x:torch.Size([2, 168, 4096])
+    #         q = self.q_proj(x_normed) #q:torch.Size([2, 168, 4096])
+    #         k = self.k_proj(x_normed) #k:torch.Size([2, 168, 4096])
+    #         v = self.v_proj(x_normed) #v:torch.Size([2, 168, 4096])
+    #         # attention_bias: None
+    #         # layer_past: None
+    #         # use_cache: False
+    #         # Get attention scores.
+    #         if self._activation_checkpoint_fn is not None:
+    #             att, cache = self._activation_checkpoint_fn(  # type: ignore
+    #                 self.attention, q, k, v, attention_bias, layer_past=layer_past, use_cache=use_cache,replace_position=replace_position
+    #             )
+    #         else:
+    #             att, cache = self.attention(q, k, v, attention_bias, layer_past=layer_past, use_cache=use_cache,replace_position=replace_position)
+            
+    #         if time_step != None:
+    #             self.__cache[f"delta{self.layer_id}"] = att - x
+    #             self.__cache[f"cache{self.layer_id}"] = cache
+
+    #     # Add attention scores.
+    #     # shape: (B, T, C)
+    #     x = x + self.dropout(att)
+
+    #     # Add feed-forward projection.
+    #     # shape: (batch_size, seq_len, d_model)
+    #     og_x = x
+    #     if self._activation_checkpoint_fn is not None:
+    #         x = self._activation_checkpoint_fn(self.ff_norm, x)  # type: ignore
+    #     else:
+    #         x = self.ff_norm(x)
+    #     x, x_up = self.ff_proj(x), self.up_proj(x) # new add
+    #     if self._activation_checkpoint_fn is not None:
+    #         x = self._activation_checkpoint_fn(self.act, x)  # type: ignore
+    #     else:
+    #         x = self.act(x)
+    #     x = x * x_up # new add
+    #     x = self.ff_out(x)
+    #     x = self.dropout(x)
+    #     x = og_x + x
+
+    #     return x, cache
+
     def forward(
         self,
         x: torch.Tensor,
@@ -972,10 +1037,10 @@ class LLaDALlamaBlock(LLaDABlock):
         time_step: Optional[int] = None,
     ) -> Tuple[torch.Tensor, Optional[Tuple[torch.Tensor, torch.Tensor]]]:
         if time_step != None and self.use_cache(time_step):
-            delta_cache = self.__cache[f"delta{self.layer_id}"]
-            if delta_cache.shape != x.shape:
-                delta_cache = delta_cache[:,32:,:]
-            return x + delta_cache, self.__cache[f"cache{self.layer_id}"]
+            out = self.__cache[f"delta{self.layer_id}"]
+            if out.shape != x.shape:
+                out = out[:,32:,:]
+            return out, self.__cache[f"cache{self.layer_id}"]
         # Get query, key, value projections.
         # shape:
         #  - for regular attn q, k, v: (batch_size, seq_len, d_model)
@@ -1016,13 +1081,13 @@ class LLaDALlamaBlock(LLaDABlock):
             x = self.act(x)
         x = x * x_up # new add
         x = self.ff_out(x)
-        # adding mlp output and attention output to cache
-        if time_step != None:
-            self.__cache[f"delta{self.layer_id}"] = x + att
-            self.__cache[f"cache{self.layer_id}"] = cache
         x = self.dropout(x)
         x = og_x + x
 
+        # adding mlp output and attention output to cache
+        if time_step != None:
+            self.__cache[f"delta{self.layer_id}"] = x
+            self.__cache[f"cache{self.layer_id}"] = cache
         return x, cache
 
 
