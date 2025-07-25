@@ -129,7 +129,6 @@ def generate_with_prefix_cache(model, prompt, steps=128, gen_length=128, block_l
 
     nfe = 0
 
-    time_step = 0
     for num_block in range(num_blocks):
         current_block_start = prompt.shape[1] + num_block * block_length
         current_block_end = current_block_start + block_length
@@ -137,7 +136,8 @@ def generate_with_prefix_cache(model, prompt, steps=128, gen_length=128, block_l
         block_mask_index = (x[:, current_block_start:current_block_end] == mask_id)
         num_transfer_tokens = get_num_transfer_tokens(block_mask_index, steps)
 
-        output = model(x, use_cache=True)
+        output = model(x, use_cache=True, time_step=None)
+        # time_step += 1
         past_key_values = output.past_key_values
 
         mask_index = (x == mask_id)
@@ -158,6 +158,7 @@ def generate_with_prefix_cache(model, prompt, steps=128, gen_length=128, block_l
         nfe += 1
         
         i = 1
+        time_step = 0
         while True:
             if (x[:, current_block_start:current_block_end] == mask_id).sum() == 0:
                 break

@@ -43,6 +43,7 @@ llada_dist (model_path=GSAI-ML/LLaDA-8B-Instruct,gen_length=256,steps=256,block_
 
 # Prefix cache + delta DiT (cache 4 step, `attn`) (2GPU)
 
+**description**: only cache entire `attn`
 Total number of tokens generated: 152533
 Total time taken: 11270.556265830994 seconds
 Tokens per second: 13.533759117126465
@@ -99,6 +100,19 @@ llada_dist (model_path=GSAI-ML/LLaDA-8B-Instruct,gen_length=256,steps=256,block_
 |gsm8k|      3|flexible-extract|     5|exact_match|↑  |0.6808|±  |0.0128|
 |     |       |strict-match    |     5|exact_match|↑  |0.3616|±  |0.0132|
 
+# Prefix cache + delta DiT (cache 4 step, `attn`, only within block) (2GPU)
+
+**description**: only cache entire `attn`, also cache only happens within each block, always do full computation at the begining of each block
+Total number of tokens generated: 152513
+Total time taken: 11391.031037330627 seconds
+Tokens per second: 13.388866424560547
+Total NFE is 168960
+2025-07-24:16:20:31,446 INFO     [lm_eval.loggers.evaluation_tracker:272] Output path not provided, skipping saving results aggregated
+llada_dist (model_path=GSAI-ML/LLaDA-8B-Instruct,gen_length=256,steps=256,block_length=32,use_cache=True,show_speed=True), gen_kwargs: (None), limit: None, num_fewshot: 5, batch_size: 1
+|Tasks|Version|     Filter     |n-shot|  Metric   |   |Value |   |Stderr|
+|-----|------:|----------------|-----:|-----------|---|-----:|---|-----:|
+|gsm8k|      3|flexible-extract|     5|exact_match|↑  |0.6990|±  |0.0126|
+|     |       |strict-match    |     5|exact_match|↑  |0.3533|±  |0.0132|
 
 # Prefix cache + delta DiT (cache 2 step) (2GPU)
 
