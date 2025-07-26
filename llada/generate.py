@@ -92,10 +92,16 @@ def generate(model, prompt, steps=128, gen_length=128, block_length=128, tempera
             logits = model(x).logits
             mask_index[:, prompt.shape[1] + (num_block + 1) * block_length:] = 0
             if factor is None:
-                x0, transfer_index = get_transfer_index(logits, temperature, remasking, mask_index, x, num_transfer_tokens[:, i] if threshold is None else None, threshold)
+                x0, transfer_index, end_token_conf = get_transfer_index(logits, temperature, remasking, mask_index, x, num_transfer_tokens[:, i] if threshold is None else None, threshold)
             else:
                 x0, transfer_index = get_transfer_index_dynamic(logits, temperature, remasking, mask_index, x, None, factor)
             x[transfer_index] = x0[transfer_index]
+            if (end_token_conf > -np.inf).any():
+                # If the end token is present, we find its position and truncate the sequence.
+                # This is to ensure that the generation stops at the end token.
+                position_of_end_token = torch.argmax(end_token_conf, dim=-1)
+                # print(f"Position of end token: {position_of_end_token}/{total_length}")
+                x = x[:, :position_of_end_token + 1]
             i += 1
             if (x[:, prompt.shape[1] + num_block * block_length: prompt.shape[1] + (num_block + 1) * block_length] == mask_id).sum() == 0:
                 break
@@ -260,6 +266,9 @@ def get_transfer_index(logits, temperature, remasking, mask_index, x, num_transf
     else:
         raise NotImplementedError(remasking)
     
+    # before x0 and x0_p get masked
+    end_token_conf = torch.where((x0 == 126081) & mask_index, x0_p, -np.inf)
+    
     x0 = torch.where(mask_index, x0, x)
     confidence = torch.where(mask_index, x0_p, -np.inf)
 
@@ -273,7 +282,7 @@ def get_transfer_index(logits, temperature, remasking, mask_index, x, num_transf
             for k in range(1, num_transfer_tokens[j]):
                 if confidence[j, select_index[k]] < threshold:
                     transfer_index[j, select_index[k]] = False
-    return x0, transfer_index
+    return x0, transfer_index, end_token_conf
 
 def get_transfer_index_dynamic(logits, temperature, remasking, mask_index, x, num_transfer_tokens, factor=1):
     logits_with_noise = add_gumbel_noise(logits, temperature=temperature)
@@ -329,7 +338,7 @@ def main():
     input_ids = tokenizer(prompt)['input_ids']
     input_ids = torch.tensor(input_ids).to(device).unsqueeze(0)
 
-    out = generate_with_dual_cache(model, input_ids, steps=128, gen_length=128, block_length=32, temperature=0., remasking='low_confidence')
+    out = generate(model, input_ids, steps=128, gen_length=128, block_length=32, temperature=0., remasking='low_confidence', threshold=0.9)
     print(tokenizer.batch_decode(out[0][:, input_ids.shape[1]:], skip_special_tokens=True)[0])
 
 if __name__ == '__main__':
